@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Chat</title>
+
+<style>
+/* ---------------- Background ---------------- */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    color: white;
+    overflow: hidden;
+
+    background: linear-gradient(-45deg, #1f1c2c, #928dab, #2e3e50, #1f1c2c);
+    background-size: 400% 400%;
+    animation: gradientBG 20s ease infinite;
+}
+
+@keyframes gradientBG {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
+}
+
+/* ---------------- Particles Layer ---------------- */
+#particles-js {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+}
+
+/* ---------------- Chat Layout ---------------- */
+#sidebar {
+    width: 220px;
+    background: rgba(32, 33, 35, 0.9);
+    padding: 10px;
+    z-index: 2;
+}
+
+#chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(6px);
+    z-index: 2;
+}
+
+#chatbox {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.message {
+    margin-bottom: 15px;
+    max-width: 700px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.user {
+    align-self: flex-end;
+    background: #3b82f6;
+    padding: 10px 15px;
+    border-radius: 15px;
+}
+
+.bot {
+    align-self: flex-start;
+    background: #444654;
+    padding: 10px 15px;
+    border-radius: 15px;
+}
+
+#input-area {
+    display: flex;
+    padding: 15px;
+    background: rgba(64, 65, 79, 0.9);
+}
+
+#userInput {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    outline: none;
+}
+
+button {
+    margin-left: 10px;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 8px;
+    background: #19c37d;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #16a36a;
+}
+</style>
+</head>
+<body>
+
+<!-- 🔥 Particle Background -->
+<div id="particles-js"></div>
+
+<div id="sidebar">
+    <h3>Chats</h3>
+    <p id="newChatBtn" style="cursor:pointer;">New Chat</p>
+</div>
+
+<div id="chat-container">
+    <div id="chatbox"></div>
+
+    <div id="input-area">
+        <input type="text" id="userInput" placeholder="Send a message..." onkeypress="handleKey(event)">
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
+        <button onclick="startSpeechRecognition()">🎤</button>
+    </div>
+</div>
+
+<!-- 🔥 Particles.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+
+<script>
+// ---------------- PARTICLES CONFIG ----------------
+particlesJS("particles-js", {
+  "particles": {
+    "number": { "value": 70 },
+    "color": { "value": "#ffffff" },
+    "shape": { "type": "circle" },
+    "opacity": { "value": 0.3 },
+    "size": { "value": 3 },
+    "line_linked": {
+      "enable": true,
+      "distance": 130,
+      "color": "#ffffff",
+      "opacity": 0.2,
+      "width": 1
+    },
+    "move": {
+      "enable": true,
+      "speed": 1.5
+    }
+  },
+  "interactivity": {
+    "events": {
+      "onhover": {
+        "enable": true,
+        "mode": "repulse"
+      }
+    }
+  }
+});
+
+// ---------------- CHAT LOGIC ----------------
+let isTyping = false;
+
+async function sendMessage() {
+    if (isTyping) return;
+
+    const input = document.getElementById("userInput");
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMessage(message, "user");
+    input.value = "";
+
+    isTyping = true;
+    const typingMsg = addMessage("Bot is typing...", "bot", true);
+
+    try {
+        const response = await fetch("http://127.0.0.1:5000/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message })
+        });
+
+        const data = await response.json();
+        typingMsg.innerText = data.reply;
+
+        speakText(data.reply);
+
+    } catch (err) {
+        typingMsg.innerText = "Error connecting to server.";
+    } finally {
+        isTyping = false;
+    }
+}
+
+function addMessage(text, sender, temp = false) {
+    const chatbox = document.getElementById("chatbox");
+    const msg = document.createElement("div");
+    msg.classList.add("message", sender);
+    msg.innerText = text;
+    chatbox.appendChild(msg);
+    chatbox.scrollTop = chatbox.scrollHeight;
+    return msg;
+}
+
+function handleKey(e) {
+    if (e.key === "Enter") sendMessage();
+}
+
+// ---------------- SPEECH ----------------
+function startSpeechRecognition() {
+    if (!('webkitSpeechRecognition' in window)) return;
+
+    const recognition = new webkitSpeechRecognition();
+    recognition.onresult = function(event) {
+        document.getElementById("userInput").value =
+            event.results[0][0].transcript;
+        sendMessage();
+    };
+    recognition.start();
+}
+
+function speakText(text) {
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+}
+
+// ---------------- RESET ----------------
+document.getElementById("newChatBtn").onclick = async () => {
+    document.getElementById("chatbox").innerHTML = "";
+    await fetch("http://127.0.0.1:5000/reset", { method: "POST" });
+};
+</script>
+
+</body>
+</html>
