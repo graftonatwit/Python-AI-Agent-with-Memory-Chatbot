@@ -15,11 +15,14 @@ CORS(app)  # Allow cross-origin requests
 client = OpenAI()
 
 # ---------------------------
-# Conversation memory
+# Store multiple conversations
 # ---------------------------
-messages = [
-    {"role": "system", "content": "You are a helpful AI assistant. You can chat and use tools like a calculator when needed."}
-]
+conversations = {}
+
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": "You are a helpful AI assistant. You can chat and use tools like a calculator when needed."
+}
 
 # ---------------------------
 # Calculator tool
@@ -47,53 +50,89 @@ def index():
 # ---------------------------
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_input = request.json.get("message")
-    
-    # Check if tool should be used
+    data = request.json
+    user_input = data.get("message")
+    chat_id = data.get("chatId")
+
+    # Create new conversation if not exists
+    if chat_id not in conversations:
+        conversations[chat_id] = [SYSTEM_PROMPT.copy()]
+
+    messages = conversations[chat_id]
+
+    # Tool check (calc)
     tool_result = use_tool(user_input)
     if tool_result:
+        messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "assistant", "content": tool_result})
         return jsonify({"reply": tool_result})
-    
+
     # Add user message
     messages.append({"role": "user", "content": user_input})
-    
-    # Get AI response
+
+    # OpenAI call
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages
     )
+
     reply = response.choices[0].message.content
+
+    # Save response
     messages.append({"role": "assistant", "content": reply})
-    
+
     return jsonify({"reply": reply})
+
+@app.route("/chats", methods=["GET"])
+def get_chats():
+    # Return list of chat IDs
+    # Optionally, you can add titles for each chat
+    chat_list = [{"id": cid, "title": f"Chat {i+1}"} 
+                for i, cid in enumerate(conversations.keys())]
+    return jsonify(chat_list)
 
 @app.route("/reset", methods=["POST"])
 def reset():
-    global messages
-    messages = [
-        {"role": "system", "content": "You are a helpful AI assistant. You can chat and use tools like a calculator when needed."}
-    ]
-    return jsonify({"status": "conversation reset"})
+    chat_id = request.json.get("chatId")
 
+    conversations[chat_id] = [SYSTEM_PROMPT.copy()]
+
+    return jsonify({"status": "conversation reset"})
 # ---------------------------
 # CLI chatbot
 # ---------------------------
 def run_cli():
     print("🤖 AI Agent started! Type 'exit' to quit.")
     print("💡 Use 'calc 2+2' for calculations.\n")
+
+    # Use a unique chat ID for this CLI session
+    chat_id = "cli_chat"
+
+    # Initialize conversation if not exists
+    if chat_id not in conversations:
+        conversations[chat_id] = [SYSTEM_PROMPT.copy()]
+
     while True:
         user_input = input("You: ")
         if user_input.lower() == "exit":
             print("Agent: Goodbye!")
             break
 
+        # Get this session's messages
+        messages = conversations[chat_id]
+
         # Check if tool should be used
         tool_result = use_tool(user_input)
         if tool_result:
+            messages.append({"role": "user", "content": user_input})
+            messages.append({"role": "assistant", "content": tool_result})
             print("Agent:", tool_result)
             continue
 
+        # Add user message
         messages.append({"role": "user", "content": user_input})
+
+        # Get AI response
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -104,7 +143,6 @@ def run_cli():
             print("Agent:", reply)
         except Exception as e:
             print("Error:", e)
-
 # ---------------------------
 # Main
 # ---------------------------

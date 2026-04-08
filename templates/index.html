@@ -103,6 +103,22 @@ button {
 
 button:hover {
     background: #16a36a;
+
+#chatList {
+    margin-top: 10px;
+}
+
+.sidebar-chat {
+    padding: 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 5px;
+    background: #2c2c33;
+}
+
+.sidebar-chat:hover {
+    background: #3b3b46;
+}
 }
 </style>
 </head>
@@ -113,7 +129,8 @@ button:hover {
 
 <div id="sidebar">
     <h3>Chats</h3>
-    <p id="newChatBtn" style="cursor:pointer;">New Chat</p>
+    <button id="newChatBtn">+ New Chat</button>
+    <div id="chatList"></div>
 </div>
 
 <div id="chat-container">
@@ -162,7 +179,52 @@ particlesJS("particles-js", {
 
 // ---------------- CHAT LOGIC ----------------
 let isTyping = false;
+let chatId = Date.now().toString();
 
+const chatListDiv = document.getElementById("chatList");
+const chatbox = document.getElementById("chatbox");
+
+// Fetch all chats and render sidebar
+async function updateSidebar() {
+    const response = await fetch("http://127.0.0.1:5000/chats");
+    const chats = await response.json();
+
+    chatListDiv.innerHTML = ""; // clear
+    chats.forEach(chat => {
+        const div = document.createElement("div");
+        div.classList.add("sidebar-chat");
+        div.innerText = chat.title;
+        div.onclick = () => switchChat(chat.id);
+        chatListDiv.appendChild(div);
+    });
+}
+
+// Switch to a different chat
+async function switchChat(id) {
+    chatId = id;
+    chatbox.innerHTML = "";
+
+    // Optionally, fetch previous messages for this chat and display them
+    const messages = conversations[id] || [];
+    messages.forEach(msg => addMessage(msg.content, msg.role === "user" ? "user" : "bot"));
+}
+
+// New chat button
+document.getElementById("newChatBtn").onclick = async () => {
+    chatId = Date.now().toString(); // new ID
+    chatbox.innerHTML = "";
+
+    await fetch("http://127.0.0.1:5000/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId })
+    });
+
+    updateSidebar();
+};
+
+// Call initially to populate sidebar
+updateSidebar();
 async function sendMessage() {
     if (isTyping) return;
 
@@ -180,7 +242,7 @@ async function sendMessage() {
         const response = await fetch("http://127.0.0.1:5000/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ message, chatId })
         });
 
         const data = await response.json();
@@ -230,8 +292,14 @@ function speakText(text) {
 
 // ---------------- RESET ----------------
 document.getElementById("newChatBtn").onclick = async () => {
+    chatId = Date.now().toString(); // NEW chat ID
     document.getElementById("chatbox").innerHTML = "";
-    await fetch("http://127.0.0.1:5000/reset", { method: "POST" });
+
+    await fetch("http://127.0.0.1:5000/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId })
+    });
 };
 </script>
 
